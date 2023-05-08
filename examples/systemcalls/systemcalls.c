@@ -1,4 +1,11 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -16,7 +23,17 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
+    int n;
+    if(cmd == NULL)
+    {
+	    return false;
+    }
+    n = system(cmd);
+    if (n < 0)
+    {
+	    perror("system");
+	    return false;
+    }
     return true;
 }
 
@@ -58,7 +75,38 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    pid_t chipid;
+    int n, wstatus;
+    chipid = fork();
+    if(chipid < 0)
+    {
+	    perror("fork");
+	    exit(1);
+    }
+    if(chipid == 0)
+    {
+	    n = execv(command[0],&command[0]);
+	    if(n < 0)
+	    {
+		    perror("execv");
+		    exit(1);
+	    }
+    }
+    else
+    {
+	    chipid = wait(&wstatus);
+	    if(WIFEXITED(wstatus))
+	    {
+		    if(WEXITSTATUS(wstatus) == 1)
+		    {
+			    return false;
+		    }
+		    else if(WEXITSTATUS(wstatus) == 0)
+		    {
+			    return true;
+		    }
+	    }
+    }
     va_end(args);
 
     return true;
@@ -74,7 +122,9 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     va_list args;
     va_start(args, count);
     char * command[count+1];
-    int i;
+    int i,n,fd;
+    int wstatus;
+    pid_t chipid;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
@@ -83,6 +133,50 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
     command[count] = command[count];
+
+    fd = open(outputfile,O_TRUNC|O_CREAT|O_WRONLY,0644);
+    if(fd < 0)
+    {
+	    perror("open");
+	    exit(1);
+    }
+
+    chipid = fork();
+    if(chipid < 0)
+    {
+            perror("fork");
+            exit(1);
+    }
+    if(chipid == 0)
+    {
+	    n = dup2(fd,1);
+	    if(n < 0)
+	    {
+		    perror("dup2");
+		    exit(1);
+	    }
+            n = execv(command[0],&command[0]);
+            if(n < 0)
+            {
+                    perror("execv");
+                    exit(1);
+            }
+    }
+    else
+    {
+            chipid = wait(&wstatus);
+            if(WIFEXITED(wstatus))
+            {
+                    if(WEXITSTATUS(wstatus) == 1)
+                    {
+                            return false;
+                    }
+                    else if(WEXITSTATUS(wstatus) == 0)
+                    {
+                            return true;
+                    }
+            }
+    }
 
 
 /*
